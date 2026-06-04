@@ -48,10 +48,9 @@
 | 文件 | 说明 |
 |------|------|
 | [mock_backend.py](validation_platform/mock_backend.py) | mock LLM 后端，支持 Chat Completions / Anthropic Messages / Responses / Gemini，完整记录请求（Authorization 脱敏），可控 usage 触发压缩 |
-| [driver.py](validation_platform/driver.py) | 用真实 `AIAgent.run_conversation()` 驱动场景 A–G |
-| [requests.jsonl](validation_platform/requests.jsonl) | 捕获的 24 个真实请求（v0.15.1） |
+| [driver.py](validation_platform/driver.py) | 用真实 `AIAgent.run_conversation()` 驱动场景 A–J |
+| [requests.jsonl](validation_platform/requests.jsonl) | 捕获的 26 个真实请求（v0.15.1） |
 | [key_samples.json](validation_platform/key_samples.json) / [codex_xai_samples.json](validation_platform/codex_xai_samples.json) | 关键请求样本 |
-| [mock_capture.py](mock_capture.py) | 早期单文件抓包脚本 |
 
 **复现**：
 
