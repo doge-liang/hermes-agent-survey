@@ -1,0 +1,162 @@
+{
+  "baseline_chat_completions": {
+    "seq": 1,
+    "path": "/v1/chat/completions",
+    "model": "mock-model",
+    "headers": {
+      "Host": "127.0.0.1:8900",
+      "Accept-Encoding": "gzip, deflate",
+      "Connection": "keep-alive",
+      "Accept": "application/json",
+      "Content-Type": "application/json",
+      "User-Agent": "OpenAI/Python 2.24.0",
+      "X-Stainless-Lang": "python",
+      "X-Stainless-Package-Version": "2.24.0",
+      "X-Stainless-OS": "Linux",
+      "X-Stainless-Arch": "x64",
+      "X-Stainless-Runtime": "CPython",
+      "X-Stainless-Runtime-Version": "3.11.15",
+      "Authorization": "Bearer sk-mo***REDACTED***",
+      "X-Stainless-Async": "false",
+      "x-stainless-retry-count": "0",
+      "x-stainless-read-timeout": "1800.0",
+      "Content-Length": "1925"
+    },
+    "body": {
+      "messages": [
+        {
+          "role": "system",
+          "content": "You are Hermes Agent, an intelligent AI assistant created by Nous Research. You are helpful, knowledgeable, and direct. You assist users with a wide range of tasks including answering questions, writing and editing code, analyzing information, creative work, and executing actions via your tools. You communicate clearly, admit uncertainty when appropriate, and prioritize being genuinely useful over being verbose unless otherwise directed below. Be targeted and efficient in your exploration and investigations.\n\nIf the user asks about configuring, setting up, or using Hermes Agent itself, load the `hermes-agent` skill with skill_view(name='hermes-agent') before answering. Docs: https://hermes-agent.nousresearch.com/docs\n\nHost: WSL (Windows Subsystem for Linux)\nUser home directory: /home/niaowuuu\nCurrent working directory: /mnt/d/Workspace/Survey/hermes/DeepseekOutput/validation_platform\n\nYou are running inside WSL (Windows Subsystem for Linux). The Windows host filesystem is mounted under /mnt/ — /mnt/c/ is the C: drive, /mnt/d/ is D:, etc. The user's Windows files are typically at /mnt/c/Users/<username>/Desktop/, Documents/, Downloads/, etc. When the user references Windows paths or desktop files, translate to the /mnt/c/ equivalent. You can list /mnt/c/Users/ to discover the Windows username if needed.\n\nActive Hermes profile: default. Other profiles (if any) live under ~/.hermes/profiles/<name>/. Each profile has its own skills/, plugins/, cron/, and memories/ that affect a different session than this one. Do not modify another profile's skills/plugins/cron/memories unless the user explicitly directs you to.\n\nConversation started: Thursday, June 04, 2026\nModel: mock-model\nProvider: custom"
+        },
+        {
+          "role": "user",
+          "content": "This is turn 1. Please acknowledge briefly."
+        }
+      ],
+      "model": "mock-model",
+      "stream": true,
+      "stream_options": {
+        "include_usage": true
+      }
+    }
+  },
+  "anthropic_native_cache_control": {
+    "seq": 2,
+    "path": "/v1/messages",
+    "model": "claude-sonnet-4-20250514",
+    "headers": {
+      "Host": "127.0.0.1:8900",
+      "Accept-Encoding": "gzip, deflate",
+      "Connection": "keep-alive",
+      "x-stainless-timeout": "NOT_GIVEN",
+      "Accept": "application/json",
+      "Content-Type": "application/json",
+      "User-Agent": "Anthropic/Python 0.87.0",
+      "X-Stainless-Lang": "python",
+      "X-Stainless-Package-Version": "0.87.0",
+      "X-Stainless-OS": "Linux",
+      "X-Stainless-Arch": "x64",
+      "X-Stainless-Runtime": "CPython",
+      "X-Stainless-Runtime-Version": "3.11.15",
+      "X-Api-Key": "sk-ant-oat01***REDACTED***",
+      "anthropic-beta": "interleaved-thinking-2025-05-14,fine-grained-tool-streaming-2025-05-14",
+      "X-Stainless-Async": "false",
+      "anthropic-version": "2023-06-01",
+      "X-Stainless-Helper-Method": "stream",
+      "X-Stainless-Stream-Helper": "messages",
+      "x-stainless-retry-count": "0",
+      "x-stainless-read-timeout": "900.0",
+      "Content-Length": "2040"
+    },
+    "body": {
+      "max_tokens": 64000,
+      "messages": [
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "This is turn 1. Please acknowledge briefly.",
+              "cache_control": {
+                "type": "ephemeral"
+              }
+            }
+          ]
+        }
+      ],
+      "model": "claude-sonnet-4-20250514",
+      "system": [
+        {
+          "type": "text",
+          "text": "You are Hermes Agent, an intelligent AI assistant created by Nous Research. You are helpful, knowledgeable, and direct. You assist users with a wide range of tasks including answering questions, writing and editing code, analyzing information, creative work, and executing actions via your tools. You communicate clearly, admit uncertainty when appropriate, and prioritize being genuinely useful over being verbose unless otherwise directed below. Be targeted and efficient in your exploration and investigations.\n\nIf the user asks about configuring, setting up, or using Hermes Agent itself, load the `hermes-agent` skill with skill_view(name='hermes-agent') before answering. Docs: https://hermes-agent.nousresearch.com/docs\n\nHost: WSL (Windows Subsystem for Linux)\nUser home directory: /home/niaowuuu\nCurrent working directory: /mnt/d/Workspace/Survey/hermes/DeepseekOutput/validation_platform\n\nYou are running inside WSL (Windows Subsystem for Linux). The Windows host filesystem is mounted under /mnt/ — /mnt/c/ is the C: drive, /mnt/d/ is D:, etc. The user's Windows files are typically at /mnt/c/Users/<username>/Desktop/, Documents/, Downloads/, etc. When the user references Windows paths or desktop files, translate to the /mnt/c/ equivalent. You can list /mnt/c/Users/ to discover the Windows username if needed.\n\nActive Hermes profile: default. Other profiles (if any) live under ~/.hermes/profiles/<name>/. Each profile has its own skills/, plugins/, cron/, and memories/ that affect a different session than this one. Do not modify another profile's skills/plugins/cron/memories unless the user explicitly directs you to.\n\nConversation started: Thursday, June 04, 2026\nModel: claude-sonnet-4-20250514\nProvider: anthropic",
+          "cache_control": {
+            "type": "ephemeral"
+          }
+        }
+      ],
+      "stream": true
+    }
+  },
+  "anthropic_thinking": {
+    "seq": 7,
+    "path": "/v1/messages",
+    "model": "claude-sonnet-4-20250514",
+    "headers": {
+      "Host": "127.0.0.1:8900",
+      "Accept-Encoding": "gzip, deflate",
+      "Connection": "keep-alive",
+      "x-stainless-timeout": "NOT_GIVEN",
+      "Accept": "application/json",
+      "Content-Type": "application/json",
+      "User-Agent": "Anthropic/Python 0.87.0",
+      "X-Stainless-Lang": "python",
+      "X-Stainless-Package-Version": "0.87.0",
+      "X-Stainless-OS": "Linux",
+      "X-Stainless-Arch": "x64",
+      "X-Stainless-Runtime": "CPython",
+      "X-Stainless-Runtime-Version": "3.11.15",
+      "X-Api-Key": "sk-ant-oat01***REDACTED***",
+      "anthropic-beta": "interleaved-thinking-2025-05-14,fine-grained-tool-streaming-2025-05-14",
+      "X-Stainless-Async": "false",
+      "anthropic-version": "2023-06-01",
+      "X-Stainless-Helper-Method": "stream",
+      "X-Stainless-Stream-Helper": "messages",
+      "x-stainless-retry-count": "0",
+      "x-stainless-read-timeout": "900.0",
+      "Content-Length": "2108"
+    },
+    "body": {
+      "max_tokens": 64000,
+      "messages": [
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "This is turn 1. Please acknowledge briefly.",
+              "cache_control": {
+                "type": "ephemeral"
+              }
+            }
+          ]
+        }
+      ],
+      "model": "claude-sonnet-4-20250514",
+      "system": [
+        {
+          "type": "text",
+          "text": "You are Hermes Agent, an intelligent AI assistant created by Nous Research. You are helpful, knowledgeable, and direct. You assist users with a wide range of tasks including answering questions, writing and editing code, analyzing information, creative work, and executing actions via your tools. You communicate clearly, admit uncertainty when appropriate, and prioritize being genuinely useful over being verbose unless otherwise directed below. Be targeted and efficient in your exploration and investigations.\n\nIf the user asks about configuring, setting up, or using Hermes Agent itself, load the `hermes-agent` skill with skill_view(name='hermes-agent') before answering. Docs: https://hermes-agent.nousresearch.com/docs\n\nHost: WSL (Windows Subsystem for Linux)\nUser home directory: /home/niaowuuu\nCurrent working directory: /mnt/d/Workspace/Survey/hermes/DeepseekOutput/validation_platform\n\nYou are running inside WSL (Windows Subsystem for Linux). The Windows host filesystem is mounted under /mnt/ — /mnt/c/ is the C: drive, /mnt/d/ is D:, etc. The user's Windows files are typically at /mnt/c/Users/<username>/Desktop/, Documents/, Downloads/, etc. When the user references Windows paths or desktop files, translate to the /mnt/c/ equivalent. You can list /mnt/c/Users/ to discover the Windows username if needed.\n\nActive Hermes profile: default. Other profiles (if any) live under ~/.hermes/profiles/<name>/. Each profile has its own skills/, plugins/, cron/, and memories/ that affect a different session than this one. Do not modify another profile's skills/plugins/cron/memories unless the user explicitly directs you to.\n\nConversation started: Thursday, June 04, 2026\nModel: claude-sonnet-4-20250514\nProvider: anthropic",
+          "cache_control": {
+            "type": "ephemeral"
+          }
+        }
+      ],
+      "temperature": 1,
+      "thinking": {
+        "type": "enabled",
+        "budget_tokens": 16000
+      },
+      "stream": true
+    }
+  }
+}
