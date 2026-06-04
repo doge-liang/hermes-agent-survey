@@ -28,7 +28,8 @@
 | # | 报告 | 内容 |
 |---|------|------|
 | 12 | [所有传输层 Agent-Hints 总结](12-所有传输层Agent-Hints总结.md) | 各传输/provider 注入的 header、body 字段对比表 |
-| 13 | [上下文管理特性 — 源码与实测验证](13-上下文管理特性-源码与实测验证.md) | **最权威**：上下文管理特性源码 + 真实请求实测，含版本核对 |
+| 13 | [上下文管理特性 — 源码与实测验证](13-上下文管理特性-源码与实测验证.md) | OpenAI SDK 路径(chat_completions + codex_responses)上下文管理源码 + 真实请求实测，含版本核对 |
+| 14 | [Anthropic 路径上下文管理深度测试](14-Anthropic路径上下文管理深度测试.md) | **最深入**：Anthropic SDK 路径(`anthropic_messages`)—— 原生 cache_control 断点/TTL/beta/thinking 五分支/usage 聚合/压缩/续写，对抗验证 + 25 断言 |
 
 **核心发现（v0.15.1）**：
 
@@ -65,6 +66,34 @@ python3 validation_platform/mock_backend.py 8900
 cat validation_platform/requests.jsonl | python3 -m json.tool
 ```
 
+## 四、Anthropic 深度测试平台 `anthropic_platform/`
+
+专门针对 **Anthropic SDK 路径**(`api_mode=anthropic_messages`)的可编程深度测试平台，配套报告 14。
+
+| 文件 | 说明 |
+|------|------|
+| [mock_anthropic.py](anthropic_platform/mock_anthropic.py) | 增强版 mock Anthropic 后端：**控制端点** `/__mock/control` 按场景下发行为(可编程 usage/cache/stop_reason/content-block/错误注入)+ 协议正确的 Anthropic SSE |
+| [driver_anthropic.py](anthropic_platform/driver_anthropic.py) | 13 个场景 S1–S13(断点滑动/TTL/native·envelope/beta/OAuth/thinking 五分支/cache 回读/压缩/length 续写/签名 400/redacted_thinking/tier 429) |
+| [check_assertions.py](anthropic_platform/check_assertions.py) | 程序化断言检查器(**25 PASS / 0 FAIL / 4 INFO**) |
+| [anthropic_requests.jsonl](anthropic_platform/anthropic_requests.jsonl) | 捕获的 37 个真实请求 |
+
+**关键发现**（详见报告 14，均经对抗性验证）：
+
+- **cache_control = system_and_3**：system + 最后 3 条非系统消息，封顶 4 个断点，随对话向数组末尾滑动(实测 `[0]→[0,1,2]→[2,3,4]→[4,5,6]`)。
+- **TTL**：5m=`{type:ephemeral}`(无 ttl)；1h=`{type:ephemeral,ttl:"1h"}`。缓存已 GA，**无** prompt-caching/extended-cache-ttl beta。
+- **thinking 五分支**：老模型(≤4.5)`{type:enabled,budget_tokens:N}`(high=16000)；4.6+ `{type:adaptive}`+`output_config.effort`；**4.6+xhigh→max 降级**；关闭/haiku 不注入。
+- **usage 三字段聚合**：`prompt_tokens = input + cache_read + cache_creation`(SDK `get_final_message()` 聚合)。
+- **host 门控发现**：OAuth 身份头需 base_url 含 `anthropic.com` 子串(非严格 host 相等，空 base_url 也触发)；envelope 布局需 `openrouter.ai` host —— localhost mock 均触发不了，源码确认。
+- **native 压缩摘要逃逸**：native Anthropic 路径压缩摘要辅助 client 不继承 mock base_url，会打到真实 api.anthropic.com；第三方/custom 路径则留在配置 base_url。
+
+**复现**：
+
+```bash
+python3 anthropic_platform/mock_anthropic.py 8910 &
+~/.hermes/hermes-agent/venv/bin/python3 anthropic_platform/driver_anthropic.py
+~/.hermes/hermes-agent/venv/bin/python3 anthropic_platform/check_assertions.py
+```
+
 ---
 
-> ⚠️ 这些报告是对 Hermes Agent 的逆向/学习性分析，用途为推理框架的 Agent Hint 亲和性优化研究。请求样本中的密钥已脱敏。
+> ⚠️ 这些报告是对 Hermes Agent 的逆向/学习性分析，用途为推理框架的 Agent Hint 亲和性优化研究。请求样本中的密钥已脱敏；mock 的 cache usage 为脚本编造，非真实缓存语义。

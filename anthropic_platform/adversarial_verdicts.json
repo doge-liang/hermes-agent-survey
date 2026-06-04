@@ -1,0 +1,150 @@
+[
+  {
+    "claim": "cache_control 采用 system_and_3 布局: system 占 1 个断点 + 最后 3 条非 system 消息, 总数封顶 4, 随对话增长断点向数组末尾滑动。",
+    "verdict": "confirmed",
+    "evidence": [
+      "/home/niaowuuu/.hermes/hermes-agent/agent/prompt_caching.py:3-4 模块 docstring: 'Single layout: system_and_3. 4 cache_control breakpoints — system prompt + last 3 non-system messages'",
+      "/home/niaowuuu/.hermes/hermes-agent/agent/prompt_caching.py:70-72 若 messages[0] 是 system 则打标记, breakpoints_used += 1 (system 占 1 个断点)",
+      "/home/niaowuuu/.hermes/hermes-agent/agent/prompt_caching.py:74 remaining = 4 - breakpoints_used (总数封顶 4)",
+      "/home/niaowuuu/.hermes/hermes-agent/agent/prompt_caching.py:75 non_sys = 所有非 system 消息的下标列表",
+      "/home/niaowuuu/.hermes/hermes-agent/agent/prompt_caching.py:76-77 for idx in non_sys[-remaining:] 对最后 remaining(=3)条非 system 消息打标记 (末尾切片 → 随对话增长向数组末尾滑动)",
+      "/home/niaowuuu/.hermes/hermes-agent/agent/conversation_loop.py:1009 effective_system 存在时总在头部插入 {'role':'system'}, 保证 system-present 正常路径",
+      "/home/niaowuuu/.hermes/hermes-agent/agent/conversation_loop.py:1024-1029 _use_prompt_caching 时调用 apply_anthropic_cache_control, 注释 'system + last 3 messages'",
+      "/home/niaowuuu/.hermes/hermes-agent/pyproject.toml:10 version = '0.15.1' 确认目标安装版本"
+    ],
+    "notes": "逐条核对全部成立: (1) system_and_3 = system 1 断点 + 最后 3 条非 system (lines 70-77); (2) 总数封顶 4, 经模拟验证 system+10 条非 system 仍只标记 4 个 (idx 0,8,9,10), 由 remaining=4-breakpoints_used 与 non_sys[-remaining:] 末尾切片保证; (3) 随对话增长尾部 3 个断点沿数组末尾滑动 (1,2,3 → 4,5,6 → 8,9,10), system 断点固定在 idx 0。一个值得注意的边角(不影响 claim, claim 已限定 system-present): 当首条不是 system 时 (breakpoints_used=0), remaining=4, 4 个断点全落在最后 4 条非 system 消息上, 此时 'system_and_3' 名义退化为 'last 4'; 但正常路径 conversation_loop.py:1009 总会前置 system 消息, 故 claim 描述的是实际运行布局。版本 0.15.1 与目标一致, 无 MEMORY 中提到的版本偏移问题。"
+  },
+  {
+    "claim": "5m TTL 的 cache_control marker 为 {type:ephemeral} 无 ttl 字段; 1h 为 {type:ephemeral, ttl:\"1h\"}。anthropic-beta 不随 TTL 变化, 且无 prompt-caching/extended-cache-ttl beta (缓存已 GA)。",
+    "verdict": "confirmed",
+    "evidence": [
+      "/home/niaowuuu/.hermes/hermes-agent/agent/prompt_caching.py:41-46 — _build_marker: marker={\"type\":\"ephemeral\"}; 仅当 ttl==\"1h\" 时才 marker[\"ttl\"]=\"1h\"。故 5m -> {type:ephemeral} 无 ttl 字段, 1h -> {type:ephemeral, ttl:\"1h\"}",
+      "实测运行 _build_marker: 5m -> {'type':'ephemeral'}; 1h -> {'type':'ephemeral','ttl':'1h'}; 未知值(如 30m) -> {'type':'ephemeral'} (退化为无 ttl)",
+      "/home/niaowuuu/.hermes/hermes-agent/agent/anthropic_adapter.py:261-264 — _COMMON_BETAS 仅含 ['interleaved-thinking-2025-05-14','fine-grained-tool-streaming-2025-05-14']; 无任何 caching beta",
+      "/home/niaowuuu/.hermes/hermes-agent/agent/anthropic_adapter.py:539-568 — _common_betas_for_base_url 仅接受 base_url / drop_context_1m_beta 参数; 实测 inspect 签名无 ttl 参数; native/openrouter/azure 各路径返回的 betas 与 TTL 无关",
+      "/home/niaowuuu/.hermes/hermes-agent/agent/anthropic_adapter.py:280-283,748-751 — OAuth 路径仅追加 _OAUTH_ONLY_BETAS=['claude-code-20250219','oauth-2025-04-20']; 仍无 caching beta",
+      "全仓 grep 'prompt-caching'/'extended-cache-ttl'/'caching-2024' 在 agent/ 源码中 0 命中 (仅 xAI 文档 URL 与中英文 prose 命中, 与 Anthropic beta header 无关)",
+      "全仓 grep 'ephemeral'/'ttl=' 唯一构造 cache marker 处为 prompt_caching.py:43-45; 其余 ephemeral 命中均为 _ephemeral_max_output_tokens / ephemeral_system_prompt / OAuth ephemeral port, 无关"
+    ],
+    "notes": "三部分全部与源码一致, verdict=confirmed。(1) marker 结构: prompt_caching.py:41-46 精确匹配, 并经实测验证。(2) anthropic-beta 不随 TTL 变化: _common_betas_for_base_url 签名无 TTL 参数, betas 由 base_url 决定而非 cache_ttl; _build_marker 与 betas 构造完全解耦。(3) 无 prompt-caching/extended-cache-ttl beta: 全仓未命中任何缓存相关 beta header (缓存已 GA, 与 claim 一致)。\n\n唯一瑕疵是 claim 给出的源码起点 '_common_betas at prompt_caching.py:41-46' 引用不精确: prompt_caching.py:41-46 实为 _build_marker; 真正的 beta 逻辑 (_common_betas_for_base_url + _COMMON_BETAS) 位于 anthropic_adapter.py:261-264,539-568。这是 claim 的定位/命名 imprecision (函数名应为 _common_betas_for_base_url), 但不影响 claim 三项事实结论, 故仍判 confirmed。\n\n安装版本核对: agent/__version__.py version='0.15.1', 与任务指定的 v0.15.1 真实安装一致 (本任务明确针对 0.15.1, 非 MEMORY 中 v0.13.0 那条记录)。"
+  },
+  {
+    "claim": "OAuth 身份头 (claude-cli UA / x-app:cli / oauth-2025-04-20 beta / Bearer auth) 要求 base_url host==api.anthropic.com: _is_third_party_anthropic_endpoint 分支 (anthropic_adapter.py:736) 先于 OAuth 分支 (:744), localhost 命中第三方分支用 x-api-key. 会话 flag _is_anthropic_oauth 是 token 前缀门控 (agent_init.py:645), 与身份头注入是两个独立门控。",
+    "verdict": "partial",
+    "evidence": [
+      "/home/niaowuuu/.hermes/hermes-agent/agent/anthropic_adapter.py:736 — `elif _is_third_party_anthropic_endpoint(base_url):` 分支在 OAuth 分支之前",
+      "/home/niaowuuu/.hermes/hermes-agent/agent/anthropic_adapter.py:741-743 — 第三方分支注入 `kwargs[\"api_key\"] = api_key` (x-api-key), 不注入 OAuth 身份头",
+      "/home/niaowuuu/.hermes/hermes-agent/agent/anthropic_adapter.py:744-754 — `elif _is_oauth_token(api_key):` 仅在前面分支均未命中时注入 auth_token + user-agent claude-cli + x-app cli + oauth-2025-04-20/claude-code-20250219 beta",
+      "/home/niaowuuu/.hermes/hermes-agent/agent/anthropic_adapter.py:369-382 — _is_third_party_anthropic_endpoint: 空 base_url 返回 False(:378), 否则当 `\"anthropic.com\" in normalized`(子串, :380) 返回 False, 其它一律返回 True(:382)",
+      "/home/niaowuuu/.hermes/hermes-agent/agent/anthropic_adapter.py:330-355 — _is_oauth_token 是纯 token 前缀判定 (sk-ant- 非 sk-ant-api / eyJ / cc-)",
+      "/home/niaowuuu/.hermes/hermes-agent/agent/agent_init.py:644-645 — `agent._is_anthropic_oauth = _is_oat(effective_key) if (_is_native_anthropic and isinstance(effective_key, str)) else False`, _is_native_anthropic 即 provider==\"anthropic\" (:607)",
+      "/home/niaowuuu/.hermes/hermes-agent/agent/agent_init.py:646 — build_anthropic_client(effective_key, base_url, timeout=...) 不传入 _is_anthropic_oauth",
+      "/home/niaowuuu/.hermes/hermes-agent/agent/anthropic_adapter.py:687-699 — build_anthropic_client 签名仅 (api_key, base_url, timeout, drop_context_1m_beta), 身份头注入在 :744 独立 re-evaluate _is_oauth_token(api_key), 从不读取会话 flag"
+    ],
+    "notes": "机制层面 claim 基本成立, 但 host 门控的表述被夸大, 故判 partial。\n\n成立部分 (confirmed):\n1. 分支顺序: 第三方分支 :736 确实先于 OAuth 分支 :744 (相邻 elif)。\n2. localhost 行为: localhost/127.0.0.1 base_url 不含 anthropic.com 子串, 不匹配 Kimi(:717) 也不匹配 bearer-auth(:726, 仅 minimax/azure.com), 落到 :736 返回 True → 走 x-api-key(:741), 不注入 OAuth 身份头。正确。\n3. 两个独立门控: 会话 flag _is_anthropic_oauth(agent_init.py:645) 是 token 前缀 + provider==anthropic 的判定; 身份头注入(adapter :744)独立地按 base_url 的第三方门控 + 重新调用 _is_oauth_token(api_key) 决定, 不消费会话 flag, build_anthropic_client 也不接收该 flag。两者确为独立机制。正确。\n\n不准确部分 (导致 partial):\n- claim 说身份头\"要求 base_url host==api.anthropic.com\"。源码实际门控是 _is_third_party_anthropic_endpoint 返回 False, 其条件是: (a) base_url 为空/None (:378, 即默认直连 Anthropic), 或 (b) 规范化后的 URL 字符串里**子串包含 `anthropic.com`** (:380), 而非严格 host 等于 api.anthropic.com。因此:\n  * 空 base_url 也能触发 OAuth 身份头 (claim 漏掉这一路径)。\n  * 任何含 anthropic.com 子串的 URL 都会触发, 例如 https://api.anthropic.com.evil.com/ 或路径里带 anthropic.com 的代理, 都会被判为\"直连 Anthropic\"而注入 OAuth 头 — 不是真正的 host 相等校验。\n  这是一个真实的语义偏差(子串 vs host 相等), 在对抗/安全语境下尤其重要, 所以不给 confirmed。\n\n附注: 还有更早的 :726 _requires_bearer_auth 分支 (minimax /anthropic 与 azure.com) 也会抢在第三方分支前用 auth_token, 但同样不注入 claude-cli/x-app/oauth beta 身份头, 与 claim 的 localhost 论点不冲突。"
+  },
+  {
+    "claim": "OpenRouter 的 envelope (message-level) cache_control 布局要求 base_url host==openrouter.ai (base_url_host_matches), localhost mock 触发不了, 故 OpenRouter+Claude 在 localhost 下 chat/completions 请求不带 cache_control。",
+    "verdict": "confirmed",
+    "evidence": [
+      "/home/niaowuuu/.hermes/hermes-agent/agent/agent_runtime_helpers.py:1194 — is_openrouter = base_url_host_matches(eff_base_url, \"openrouter.ai\") (纯 host 判定, 无 provider-name 分支)",
+      "/home/niaowuuu/.hermes/hermes-agent/agent/agent_runtime_helpers.py:1207-1208 — if (is_openrouter or is_nous_portal) and is_claude: return True, False (OpenRouter+Claude 走 use_native_layout=False, 即 envelope/message-level 布局)",
+      "/home/niaowuuu/.hermes/hermes-agent/agent/agent_runtime_helpers.py:1167-1170 — 文档串明确: use_native_layout=False 时 'markers go on the message envelope (OpenRouter and OpenAI-wire proxies expect the looser layout)'",
+      "/home/niaowuuu/.hermes/hermes-agent/agent/agent_runtime_helpers.py:1255 — 所有分支不匹配时 return False, False (localhost 默认落到此)",
+      "/home/niaowuuu/.hermes/hermes-agent/utils.py:358-376 — base_url_host_matches: hostname == domain or hostname.endswith('.'+domain); localhost 解析出 hostname='localhost' != 'openrouter.ai' → False",
+      "/home/niaowuuu/.hermes/hermes-agent/agent/conversation_loop.py:1024-1029 — if agent._use_prompt_caching: api_messages = apply_anthropic_cache_control(...) (chat/completions 路径上 cache_control 注入由 _use_prompt_caching 门控)",
+      "/home/niaowuuu/.hermes/hermes-agent/agent/agent_init.py:470-472 与 chat_completion_helpers.py:1209-1216 — _use_prompt_caching, _use_native_cache_layout = _anthropic_prompt_cache_policy(...) (init 与 fallback 均由该 policy 设值)",
+      "/mnt/d/Workspace/project/hermes-agent/scripts/mock_openai_server.py:216-217 — mock 只暴露 /v1/chat/completions (OpenAI-wire), api_mode 非 anthropic_messages, 故 is_anthropic_wire 分支也不触发"
+    ],
+    "notes": "核心机制完全成立: OpenRouter 检测在 cache policy 内 100% 依赖 base_url_host_matches(eff_base_url,'openrouter.ai') (agent_runtime_helpers.py:1194), 不存在任何 provider=='openrouter' 名称分支。localhost mock 的 hostname 是 'localhost', base_url_host_matches 返回 False (utils.py:370-376), is_nous_portal('nousresearch' 子串) 也 False, mock 是 OpenAI-wire 故 is_anthropic_wire/minimax/alibaba 分支均不命中, 最终 return False,False。_use_prompt_caching=False → conversation_loop.py:1024 的 apply_anthropic_cache_control 被跳过 → chat/completions 请求不带 cache_control。已对抗性排查: 无其它绕过路径在 localhost 下重新启用 OpenRouter caching。\n\n一处术语细节(不影响裁定): claim/源码注释都把 OpenRouter 布局称作 'envelope/message-level'(agent_runtime_helpers.py:1167-1170 自述 'markers go on the message envelope'),但实际 _apply_cache_marker (prompt_caching.py:29-38) 在 native_anthropic=False + 字符串 content 时,会把 cache_control 包进内层 text block, 只有空 content 才真正落到 msg['cache_control'] 这个真·envelope 键。这是实现层细节,与 claim 主张的 host-gate→localhost 无 cache_control 这一核心论断无冲突,故仍判 confirmed。"
+  },
+  {
+    "claim": "thinking 注入: 老模型(3.7/4/4.5)用 {type:enabled, budget_tokens:N}(high=16000); 4.6+ 用 {type:adaptive, display:summarized}+output_config.effort; 4.7+ 接受 xhigh, 4.6 把 xhigh 降级为 max; reasoning 关闭或 haiku 不注入 thinking。",
+    "verdict": "confirmed",
+    "evidence": [
+      "/home/niaowuuu/.hermes/hermes-agent/agent/anthropic_adapter.py:58 — THINKING_BUDGET = {\"xhigh\": 32000, \"high\": 16000, \"medium\": 8000, \"low\": 4000} (high=16000 确认)",
+      "/home/niaowuuu/.hermes/hermes-agent/agent/anthropic_adapter.py:2266 — else 分支: kwargs[\"thinking\"] = {\"type\": \"enabled\", \"budget_tokens\": budget} (老模型 manual 模式)",
+      "/home/niaowuuu/.hermes/hermes-agent/agent/anthropic_adapter.py:2251-2252 — budget = THINKING_BUDGET.get(effort, 8000); if _supports_adaptive_thinking(model): ...",
+      "/home/niaowuuu/.hermes/hermes-agent/agent/anthropic_adapter.py:2253-2256 — adaptive 分支: kwargs[\"thinking\"] = {\"type\": \"adaptive\", \"display\": \"summarized\"}",
+      "/home/niaowuuu/.hermes/hermes-agent/agent/anthropic_adapter.py:2257,2262-2264 — adaptive_effort = ADAPTIVE_EFFORT_MAP.get(effort, \"medium\"); kwargs[\"output_config\"] = {\"effort\": adaptive_effort}",
+      "/home/niaowuuu/.hermes/hermes-agent/agent/anthropic_adapter.py:85 — _ADAPTIVE_THINKING_SUBSTRINGS = (\"4-6\", \"4.6\", \"4-7\", \"4.7\", \"4-8\", \"4.8\") — 4.6+ 走 adaptive",
+      "/home/niaowuuu/.hermes/hermes-agent/agent/anthropic_adapter.py:210-212 — _supports_adaptive_thinking: any(v in model for v in _ADAPTIVE_THINKING_SUBSTRINGS)",
+      "/home/niaowuuu/.hermes/hermes-agent/agent/anthropic_adapter.py:80 — _XHIGH_EFFORT_SUBSTRINGS = (\"4-7\", \"4.7\", \"4-8\", \"4.8\") — 仅 4.7+ 接受 xhigh",
+      "/home/niaowuuu/.hermes/hermes-agent/agent/anthropic_adapter.py:215-223 — _supports_xhigh_effort: any(v in model for v in _XHIGH_EFFORT_SUBSTRINGS)",
+      "/home/niaowuuu/.hermes/hermes-agent/agent/anthropic_adapter.py:2260-2261 — if adaptive_effort == \"xhigh\" and not _supports_xhigh_effort(model): adaptive_effort = \"max\" (4.6 降级)",
+      "/home/niaowuuu/.hermes/hermes-agent/agent/anthropic_adapter.py:2249 — if reasoning_config.get(\"enabled\") is not False and \"haiku\" not in model.lower(): (关闭或 haiku 跳过整个 thinking 块)"
+    ],
+    "notes": "五个子句全部与源码一致,confirmed。逐条核对:(1) 老模型 manual 模式 {type:enabled,budget_tokens:N},high=16000 来自 THINKING_BUDGET[anthropic_adapter.py:58];(2) 4.6+ adaptive {type:adaptive,display:summarized}+output_config.effort;(3) 4.7+ 接受 xhigh(_XHIGH_EFFORT_SUBSTRINGS 含 4-7/4.7/4-8/4.8);(4) 4.6 不在 xhigh 名单 → 降级为 max;(5) enabled is False 或 model 含 haiku → 整块跳过。\n\n需补充两点轻微出入(不影响 confirmed,但 claim 措辞略不精确):\n1. claim 说\"老模型(3.7/4/4.5)\"。源码并非显式枚举这三个版本,而是用 else 分支(即 _supports_adaptive_thinking 为 False 的所有模型走 manual)。除 3.7/4/4.5 外,3.5/3 系列、MiniMax 等第三方 Anthropic-compat 端点也都会落入 manual {type:enabled,budget_tokens:N} 分支(注释 anthropic_adapter.py:2227-2228 明确 MiniMax manual-only)。所以\"老模型用 manual\"对 3.7/4/4.5 成立,但实际触发条件是\"非 4.6+\"而非按版本白名单。\n2. manual 分支还额外强制 temperature=1 并抬高 max_tokens(anthropic_adapter.py:2268-2269),这是 claim 未提及但同属 manual 路径的副作用;不与 claim 冲突。\n3. Haiku 判断用 \"haiku\" not in model.lower();reasoning 关闭判断是 enabled is not False(注意:只有显式 False 才跳过,缺省/None 仍注入)。\n4. 另有 Kimi /coding 端点(_is_kimi_coding,line 2247-2248)整体跳过 thinking,这是 claim 范围外的第三个跳过场景。\n\n整体:claim 描述的核心机制与版本门槛与 v0.15.1 源码完全吻合,判定 confirmed。"
+  },
+  {
+    "claim": "native Anthropic 路径(provider=anthropic)的压缩摘要辅助 client 不继承被 override 的 mock base_url,会逃逸到真实 api.anthropic.com;而第三方/custom provider 路径摘要请求留在配置的 base_url。摘要请求是非流式(messages.create)、单 user 消息、无 tools。",
+    "verdict": "confirmed",
+    "evidence": [
+      "/home/niaowuuu/.hermes/hermes-agent/pyproject.toml:10 — version = \"0.15.1\"(确认验证的是 v0.15.1 真实安装)",
+      "/home/niaowuuu/.hermes/hermes-agent/agent/context_compressor.py:1380-1395 — 压缩摘要构造 call_kwargs:task=\"compression\", main_runtime={model/provider/base_url/api_key/api_mode}, messages=[{role:user,content:prompt}], max_tokens=...;无 tools、单 user 消息,经 call_llm() 调用",
+      "/home/niaowuuu/.hermes/hermes-agent/agent/auxiliary_client.py:4964-5001 — call_llm 调 _resolve_task_provider_model(task,None,None,None,None) 后用 _get_cached_client(resolved_provider, ..., main_runtime=main_runtime)",
+      "/home/niaowuuu/.hermes/hermes-agent/agent/auxiliary_client.py:4644-4664 — 无顶层 provider/base_url 时 _resolve_task_provider_model 对 compression 返回 \"auto\"(无 auxiliary.compression 覆盖时)",
+      "/home/niaowuuu/.hermes/hermes-agent/agent/auxiliary_client.py:4544-4552 — _get_cached_client 将 main_runtime 转发给 resolve_provider_client(provider, ..., main_runtime=runtime)",
+      "/home/niaowuuu/.hermes/hermes-agent/agent/auxiliary_client.py:3398-3399 — provider==\"auto\" → _resolve_auto(main_runtime=main_runtime)",
+      "/home/niaowuuu/.hermes/hermes-agent/agent/auxiliary_client.py:3082,3091-3092 — _resolve_auto 读取 runtime_base_url(override 的 mock base_url),含 _RUNTIME_MAIN_BASE_URL 回退",
+      "/home/niaowuuu/.hermes/hermes-agent/agent/auxiliary_client.py:3129-3134 — 关键门控:explicit_base_url=None;仅当 main_provider==\"custom\" 或 custom: 时才 explicit_base_url=runtime_base_url。anthropic 不满足→mock base_url 被丢弃",
+      "/home/niaowuuu/.hermes/hermes-agent/agent/auxiliary_client.py:3149-3155 — 对 anthropic 调 resolve_provider_client(resolved_provider, main_model, explicit_base_url=None, explicit_api_key=runtime_api_key, ...)",
+      "/home/niaowuuu/.hermes/hermes-agent/agent/auxiliary_client.py:3718-3725 — anthropic 分支:_try_anthropic(explicit_api_key=explicit_api_key) 完全忽略 explicit_base_url",
+      "/home/niaowuuu/.hermes/hermes-agent/agent/auxiliary_client.py:3744-3750 — 对比:通用 api_key 分支显式 honor explicit_base_url(if explicit_base_url: base_url=_to_openai_base_url(...));仅 anthropic 分支不使用它",
+      "/home/niaowuuu/.hermes/hermes-agent/agent/auxiliary_client.py:2112-2127 — _try_anthropic 仅当 config.yaml model.provider==\"anthropic\" 时才用 model.base_url;否则保持默认",
+      "/home/niaowuuu/.hermes/hermes-agent/agent/auxiliary_client.py:420,2115 — _ANTHROPIC_DEFAULT_BASE_URL=\"https://api.anthropic.com\";非 pool 时 base_url=该默认值→逃逸到真实 api.anthropic.com",
+      "/home/niaowuuu/.hermes/hermes-agent/agent/anthropic_adapter.py:697-711 — build_anthropic_client 把该 base_url 写入 SDK kwargs[\"base_url\"](默认即 api.anthropic.com)",
+      "/home/niaowuuu/.hermes/hermes-agent/agent/auxiliary_client.py:967,1012 — AnthropicAuxiliaryClient.create 用 self._client.messages.create(**anthropic_kwargs) 非流式(非 .stream());compression tools=None"
+    ],
+    "notes": "在 v0.15.1 真实安装上逐条源码确认,claim 成立(confirmed)。\n\n机制链(native anthropic 压缩摘要):context_compressor 把 CLI/gateway 的运行时 override(provider=anthropic, base_url=mock)放进 main_runtime,经 call_llm→_get_cached_client→resolve_provider_client(\\\"auto\\\")→_resolve_auto。_resolve_auto:3131 的门控仅把 runtime_base_url(mock)注入 explicit_base_url 当 provider 是 custom/custom:;anthropic 分支因此把 mock 丢弃,explicit_base_url=None。随后 anthropic 分支(3719)调 _try_anthropic 时只传 explicit_api_key,根本不传 explicit_base_url;_try_anthropic 内部又只认 config.yaml model.base_url(且要求 model.provider==anthropic),否则用 _ANTHROPIC_DEFAULT_BASE_URL=https://api.anthropic.com。最终 build_anthropic_client→messages.create 打到真实 api.anthropic.com。摘要请求形状与 claim 完全一致:非流式 messages.create、单 user 消息、无 tools(compressor 不传 tools)。\n\n对比成立:custom/custom: provider 在 3131-3134 显式把 runtime_base_url(mock)赋给 explicit_base_url,留在配置/override 的 base_url;通用 api_key provider 在 3749-3750 honor explicit_base_url,且其 base_url 来自 provider 注册的 inference_base_url/pool creds,不会落到 api.anthropic.com。唯独 native anthropic 分支不接收 explicit_base_url——这正是逃逸点。\n\n限定条件(不削弱 claim):若用户把 mock 同时写进 config.yaml 的 model.base_url 且 model.provider=anthropic,则 _try_anthropic:2122-2125 会读到、不逃逸;或 anthropic pool 凭据带自定义 base_url(2115)也会被采用。但这两者属于配置层路径,与 claim 针对的\\\"被 override 的 mock base_url\\\"(set_runtime_main/main_runtime 这条 CLI/gateway 运行时 override 路径)正交——该 override 路径确实被 anthropic 分支整体忽略,与 claim 表述吻合。"
+  },
+  {
+    "claim": "Anthropic 响应 usage 经 SDK get_final_message() 聚合, Hermes normalize_usage 的 prompt_tokens = input_tokens + cache_read_input_tokens + cache_creation_input_tokens (三者之和); cache 字段缺省时 _to_int 兜底为 0。",
+    "verdict": "partial",
+    "evidence": [
+      "/home/niaowuuu/.hermes/hermes-agent/agent/chat_completion_helpers.py:2041 — `return stream.get_final_message()` 返回原生 Anthropic Message,其 `.usage` 即 SDK 聚合后的最终 usage(注释 1964-1967 明确说明返回 get_final_message())",
+      "/home/niaowuuu/.hermes/hermes-agent/agent/usage_pricing.py:723-727 — anthropic_messages 分支:input_tokens / cache_read_input_tokens / cache_creation_input_tokens 各自独立 _to_int 读取,normalize_usage 内部【没有】把三者相加",
+      "/home/niaowuuu/.hermes/hermes-agent/agent/usage_pricing.py:764-770 — normalize_usage 把 input_tokens / cache_read_tokens / cache_write_tokens 作为三个【独立桶】塞进 CanonicalUsage,不做求和",
+      "/home/niaowuuu/.hermes/hermes-agent/agent/usage_pricing.py:39-41 — 三者之和发生在 CanonicalUsage.prompt_tokens @property:`return self.input_tokens + self.cache_read_tokens + self.cache_write_tokens`,而非 normalize_usage",
+      "/home/niaowuuu/.hermes/hermes-agent/agent/usage_pricing.py:724-727 — `getattr(response_usage, \"cache_read_input_tokens\", 0)` / `cache_creation_input_tokens`,缺省时 getattr 返回 0",
+      "/home/niaowuuu/.hermes/hermes-agent/agent/usage_pricing.py:548-552 — _to_int: `int(value or 0)`,None/异常时返回 0,构成兜底"
+    ],
+    "notes": "立场:怀疑并试图 REFUTE。结论 partial。\\n\\n确认部分:\\n1. get_final_message() 聚合 — 真。chat_completion_helpers.py:2041 返回原生 Anthropic Message,其 .usage 为 SDK 流式聚合后的最终值。\\n2. 三者之和 input+cache_read+cache_creation 这一【算术公式】真实存在 — 但位于 CanonicalUsage.prompt_tokens @property(usage_pricing.py:40-41),且求和用的三个桶确实由 normalize_usage 的 anthropic 分支(723-727)填充。\\n3. cache 字段缺省兜底为 0 — 真。getattr(...,0) + _to_int(int(value or 0))(548-552)双重兜底。\\n\\n出入(为何不是 confirmed):claim 把三者求和归因于 normalize_usage 本身(\"normalize_usage 的 prompt_tokens = 三者之和\")。源码事实是 normalize_usage 在 anthropic_messages 分支里【刻意保持三桶分离】(724-727→764-770),从不相加;求和发生在下游的 @property。注意这里与 codex/openai 分支语义相反:那两个分支的 input_tokens 是从总数【减去】cache 得到(736、757),而 anthropic 分支 input_tokens 是裸读不减。所以\"normalize_usage 计算了 prompt_tokens 三者之和\"这一定位是错的——normalize_usage 没有 prompt_tokens 这个概念/输出,它输出的是 CanonicalUsage,prompt_tokens 是该 dataclass 的派生属性。\\n\\n核验环境:用户实际安装路径 /home/niaowuuu/.hermes/hermes-agent,pyproject version=0.15.1(与任务声明一致,非 MEMORY 中提到的 v0.13.0 旧版偏差)。\\n\\n综合:算术结果与 _to_int 兜底 confirmed,但求和位置/归因 refuted,故整体 partial。"
+  },
+  {
+    "claim": "thinking content block 不经 run_conversation 的 conversation_history 参数回放;通过上一轮 result[\"messages\"] 传回的历史不含 thinking 块,故签名400清空重试分支无法仅靠 conversation_history 端到端触发(需同一 agent 连续循环内的 reasoning_details 回放)。",
+    "verdict": "refuted",
+    "evidence": [
+      "/home/niaowuuu/.hermes/hermes-agent/agent/transports/anthropic.py:101-105 — normalize_response 对每个 type=='thinking' 的 block 调 _to_plain_data(block) 并塞进 reasoning_details(含 type/thinking/signature),写入 provider_data['reasoning_details'](:130-132)",
+      "/home/niaowuuu/.hermes/hermes-agent/agent/chat_completion_helpers.py:910-925 — build_assistant_message 把 assistant_message.reasoning_details 原样 preserved 后写入 msg['reasoning_details'](signature 一并保留)",
+      "/home/niaowuuu/.hermes/hermes-agent/agent/conversation_loop.py:3777-3778 — 该 msg 被 messages.append(assistant_msg) 进入会话缓冲",
+      "/home/niaowuuu/.hermes/hermes-agent/agent/conversation_loop.py:4730-4733 — result['messages'] = messages 原样返回,无任何 reasoning_details 剥离(唯一 pop 在 :2551 签名恢复分支内,仅 retry 时触发)",
+      "/home/niaowuuu/.hermes/hermes-agent/agent/conversation_loop.py:499 — 下一轮 messages = list(conversation_history),浅拷贝,reasoning_details 逐字保留",
+      "/home/niaowuuu/.hermes/hermes-agent/agent/anthropic_adapter.py:1572-1586 — _extract_preserved_thinking_blocks 从 message['reasoning_details'] 重建 type in {thinking,redacted_thinking} 的签名块",
+      "/home/niaowuuu/.hermes/hermes-agent/agent/anthropic_adapter.py:1628-1640 + 2064-2065 — 角色为 assistant 的历史消息走 _convert_assistant_message → _extract_preserved_thinking_blocks,thinking 块(含 signature)被还原为 Anthropic content block 发回 API",
+      "/home/niaowuuu/.hermes/hermes-agent/agent/error_classifier.py:553-562 — 被还原的 signature 若失效,Anthropic 返回 400('signature'+'thinking')→ FailoverReason.thinking_signature",
+      "/home/niaowuuu/.hermes/hermes-agent/agent/conversation_loop.py:2544-2562 — 该 FailoverReason 触发清空 reasoning_details 重试分支",
+      "/home/niaowuuu/.hermes/hermes-agent/agent/conversation_loop.py:986 — 注释明确:'Keep reasoning_details ... The signature field helps maintain reasoning continuity',API 拷贝不剥离 signature"
+    ],
+    "notes": "claim 的核心结论与源码相反。thinking 块以 reasoning_details 字段(含 type='thinking' 与 signature)端到端往返:normalize_response(anthropic.py:101-105)采集 → build_assistant_message(chat_completion_helpers.py:910-925)存入 msg → append 进 messages(conversation_loop.py:3778)→ result['messages'] 原样返回(:4733)→ 下一轮作为 conversation_history 浅拷贝进 messages(:499)→ Anthropic 转换层从 reasoning_details 重建签名 thinking content block(anthropic_adapter.py:1572-1586,2064-2065)发回 API。因此签名 400 清空重试分支(:2544-2562)完全可以仅靠 conversation_history 端到端触发,无需'同一 agent 连续循环'。事实上 conversation_loop.py:508-509 注释指出 gateway 每条入站消息新建 fresh AIAgent,跨轮回放正是经由 conversation_history 完成,恰好与 claim 所谓'需同一 agent 连续循环'相反。 唯一对 claim 措辞有利的细微点:thinking 不是作为顶层 OpenAI 风格 content 块存储,而是放在 reasoning_details 字段——但它在回放时被无损还原为 Anthropic thinking content 块(含 signature),功能上完全往返。故 claim 的字面前提('result[messages] 不含 thinking 块')在'OpenAI 顶层 content'这一狭义读法下勉强成立,但据此推出的因果结论('无法仅靠 conversation_history 端到端触发签名 400 分支')被源码明确推翻,整体判定 refuted。"
+  },
+  {
+    "claim": "stop_reason=max_tokens 或 model_context_window_exceeded 被映射为 finish_reason=length, 触发 Hermes 注入续写 system 文本并发起续写请求, 最多 3 次预算提升。",
+    "verdict": "confirmed",
+    "evidence": [
+      "agent/transports/anthropic.py:175 — \"max_tokens\": \"length\" in _STOP_REASON_MAP",
+      "agent/transports/anthropic.py:178 — \"model_context_window_exceeded\": \"length\" in _STOP_REASON_MAP",
+      "agent/transports/anthropic.py:181-183 — map_finish_reason applies _STOP_REASON_MAP",
+      "agent/conversation_loop.py:1604-1606 — anthropic_messages path: finish_reason = _tfr.map_finish_reason(response.stop_reason)",
+      "agent/conversation_loop.py:1628 — if finish_reason == \"length\": enters truncation handling",
+      "agent/conversation_loop.py:1726 — length_continue_retries += 1 on no-tool-call truncation",
+      "agent/conversation_loop.py:1732 — if length_continue_retries < 3 gates the retry",
+      "agent/conversation_loop.py:1760-1769 — _get_continuation_prompt(...) built, appended as message, restart_with_length_continuation = True",
+      "agent/conversation_loop.py:343-348 — _get_continuation_prompt else-branch: '[System: Your previous response was truncated by the output length limit...]'",
+      "agent/conversation_loop.py:1781 — error='Response remained truncated after 3 continuation attempts'",
+      "agent/conversation_loop.py:3514-3528 — restart_with_length_continuation block: _boost = _boost_base * (length_continue_retries + 1), capped, applied via _ephemeral_max_output_tokens",
+      "agent/conversation_loop.py:4372 — length_continue_retries reset to 0 on successful completion"
+    ],
+    "notes": "每一环都在源码中得到证实,无出入:映射(anthropic.py:175,178)→ 在 anthropic 路径上应用(conversation_loop.py:1606)→ finish_reason=='length' 触发(1628)→ 注入续写文本并重启(1760-1769, 续写文本定义于 343-348)→ 上限 3 次(1732/1781)→ 每次重启渐进提升输出预算 _boost_base*(retries+1) 上限 max(32768,...)(3514-3528)。\\n\\n一处措辞需澄清(不影响 confirmed):claim 说\\\"注入续写 system 文本\\\",但注入的消息 role 实际是 \\\"user\\\"(conversation_loop.py:1763-1766),其 content 以字面标记 '[System: ...]' 开头,并非真正的 system-role 消息。语义(注入续写指令文本)成立,仅角色字段非 system。\\n\\n另一处补充:同一 finish_reason=='length' 分支下,若响应携带 tool_calls 则走另一条 truncated_tool_call_retries 路径(1784-1799,同样 <3),而 claim 描述的\\\"续写文本注入\\\"对应的是无 tool_call 的纯文本截断路径。\\\"3 次预算提升\\\"在数值上对应 retries 0/1/2 共 3 次提升尝试,与 length_continue_retries<3 一致。\\n\\n说明:验证基于任务指定的真实安装源码 /home/niaowuuu/.hermes/hermes-agent/agent/(任务称其为 v0.15.1)。MEMORY 提到用户实际运行可能为 v0.13.0,但本任务明确要求验证该 v0.15.1 源码树,故以此为准。"
+  }
+]
