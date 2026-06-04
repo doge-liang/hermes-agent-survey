@@ -45,7 +45,8 @@ from http.server import HTTPServer
 from urllib.parse import urlparse
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-LOGFILE = os.path.join(HERE, "anthropic_requests.jsonl")
+# 日志路径可由 MOCK_LOGFILE 覆盖 (cli_platform 复用本 mock 时指向自己的目录, 不污染 anthropic_platform)
+LOGFILE = os.environ.get("MOCK_LOGFILE") or os.path.join(HERE, "anthropic_requests.jsonl")
 _SENSITIVE = {"authorization", "api-key", "x-api-key", "cookie", "x-goog-api-key"}
 
 # ── 全局可编程状态 ───────────────────────────────────────────
@@ -237,6 +238,8 @@ class Handler(BaseHTTPRequestHandler):
                                     "llama.context_length": 200000}, "parameters": "num_ctx 200000"})
         if "messages" in path:
             return self._anthropic(body, stream, len(raw))
+        if "responses" in path:
+            return self._responses(body, stream, len(raw))
         if "chat/completions" in path:
             return self._chat(body, stream, len(raw))
         return self._json(200, {"status": "ok"})
@@ -365,6 +368,52 @@ class Handler(BaseHTTPRequestHandler):
             else:
                 out.append({"type": "text", "text": "[Mock] Anthropic reply."})
         return out or [{"type": "text", "text": "[Mock] Anthropic reply."}]
+
+    # ── OpenAI Responses API (codex_responses 路径) ──
+    def _responses(self, body, stream, body_len):
+        self._record(body, stream, urlparse(self.path).path)
+        err = self._maybe_error(body)
+        if err:
+            status, ejson = err
+            return self._json(status, ejson)
+        inp, cr, cc, outp = self._usage(body_len)
+        rid = "resp_" + uuid.uuid4().hex[:10]
+        mid = "msg_" + uuid.uuid4().hex[:10]
+        text = "[Mock] Responses reply."
+        usage = {"input_tokens": inp, "output_tokens": outp, "total_tokens": inp + outp}
+        msg_item = {"id": mid, "type": "message", "role": "assistant", "status": "completed",
+                    "content": [{"type": "output_text", "text": text, "annotations": []}]}
+
+        def robj(status, output):
+            return {"id": rid, "object": "response", "status": status, "model": body.get("model", "gpt-mock"),
+                    "output": output, "usage": usage if status == "completed" else None}
+
+        if not stream:
+            return self._json(200, robj("completed", [msg_item]))
+        # Responses API SSE: created -> output_item.added -> output_text.delta -> completed
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream")
+        self.end_headers()
+        seq = [0]
+
+        def sse(ev, data):
+            data = dict(data); data["sequence_number"] = seq[0]; seq[0] += 1
+            self.wfile.write(f"event: {ev}\ndata: {json.dumps(data)}\n\n".encode()); self.wfile.flush()
+
+        in_prog = {"id": mid, "type": "message", "role": "assistant", "status": "in_progress", "content": []}
+        sse("response.created", {"type": "response.created", "response": robj("in_progress", [])})
+        sse("response.in_progress", {"type": "response.in_progress", "response": robj("in_progress", [])})
+        sse("response.output_item.added", {"type": "response.output_item.added", "output_index": 0, "item": in_prog})
+        sse("response.content_part.added", {"type": "response.content_part.added", "item_id": mid,
+            "output_index": 0, "content_index": 0, "part": {"type": "output_text", "text": "", "annotations": []}})
+        sse("response.output_text.delta", {"type": "response.output_text.delta", "item_id": mid,
+            "output_index": 0, "content_index": 0, "delta": text})
+        sse("response.output_text.done", {"type": "response.output_text.done", "item_id": mid,
+            "output_index": 0, "content_index": 0, "text": text})
+        sse("response.content_part.done", {"type": "response.content_part.done", "item_id": mid,
+            "output_index": 0, "content_index": 0, "part": {"type": "output_text", "text": text, "annotations": []}})
+        sse("response.output_item.done", {"type": "response.output_item.done", "output_index": 0, "item": msg_item})
+        sse("response.completed", {"type": "response.completed", "response": robj("completed", [msg_item])})
 
     # ── OpenAI-wire 基线 (x-anthropic-beta 旁路键名) ──
     def _chat(self, body, stream, body_len):

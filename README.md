@@ -30,6 +30,7 @@
 | 12 | [所有传输层 Agent-Hints 总结](12-所有传输层Agent-Hints总结.md) | 各传输/provider 注入的 header、body 字段对比表 |
 | 13 | [上下文管理特性 — 源码与实测验证](13-上下文管理特性-源码与实测验证.md) | OpenAI SDK 路径(chat_completions + codex_responses)上下文管理源码 + 真实请求实测 |
 | 14 | [Anthropic 路径上下文管理深度测试](14-Anthropic路径上下文管理深度测试.md) | **最深入**：Anthropic SDK 路径(`anthropic_messages`)—— 原生 cache_control 断点/TTL/beta/thinking 五分支/usage 聚合/压缩/续写，对抗验证 + 25 断言 |
+| 15 | [真实 CLI 探测测试台](15-真实CLI探测测试台.md) | **真实 `hermes` CLI** + mock 探测：走完整 config + 全量 system(16k 字符)+ 29 tools 入口，补 import-driver 盲区；12 场景 25 断言；产出真实后端测试台 fixtures |
 
 **核心发现（v0.15.1）**：
 
@@ -91,6 +92,27 @@ cat validation_platform/requests.jsonl | python3 -m json.tool
 python3 anthropic_platform/mock_anthropic.py 8910 &
 ~/.hermes/hermes-agent/venv/bin/python3 anthropic_platform/driver_anthropic.py
 ~/.hermes/hermes-agent/venv/bin/python3 anthropic_platform/check_assertions.py
+```
+
+## 五、真实 CLI 探测测试台 `cli_platform/`（配套报告 15）
+
+前三个平台用 import-driver（`AIAgent.run_conversation()` 程序化驱动）；本平台用**真实 `hermes` CLI**（`hermes chat` 子命令）走完整 config 解析 + **全量 system prompt（16k 字符）+ 29 tools** 入口，补 import-driver 盲区，并产出**真实后端测试台的 fixtures**。
+
+| 文件 | 说明 |
+|------|------|
+| [driver_cli.py](cli_platform/driver_cli.py) | 子进程编排真实 `hermes chat`（**不 import hermes，只 shell out**）；多轮经 `--resume` + SessionDB；自动起停 mock |
+| [check_cli.py](cli_platform/check_cli.py) | 程序化断言（**25 PASS / 0 FAIL / 3 INFO**） |
+| [gen_fixtures.py](cli_platform/gen_fixtures.py) / [fixtures.json](cli_platform/fixtures.json) | 后端无关 fixtures（触发命令 + 期望 agent-hint 签名 + 容差）→ 真实后端测试台输入 |
+| [cli_requests.jsonl](cli_platform/cli_requests.jsonl) | 捕获的真实 CLI 请求 |
+
+12 个场景 RC-01~RC-10（mapped from A–J/S1–S13）。**关键差异**：真实 CLI 即便 `toolsets:[]` 也发 29 tools + 16096 字符 system（import-driver 0/~1700）；thinking 经 `agent.reasoning_effort` config **自然触发**（无 monkeypatch）；OpenRouter 系列 host 门控（需 `openrouter.ai` host）→ 标 INFO 留真实后端阶段。复用 `anthropic_platform/mock_anthropic.py`（经 `MOCK_LOGFILE` 重定向日志）。
+
+**复现**：
+
+```bash
+~/.hermes/hermes-agent/venv/bin/python3 cli_platform/driver_cli.py 8920   # 自动起停 mock
+~/.hermes/hermes-agent/venv/bin/python3 cli_platform/check_cli.py
+~/.hermes/hermes-agent/venv/bin/python3 cli_platform/gen_fixtures.py
 ```
 
 ---
