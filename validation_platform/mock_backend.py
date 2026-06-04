@@ -35,11 +35,22 @@ def _classify_request(model, body):
     if not isinstance(body, dict):
         return "unknown"
     msgs = body.get("messages") or []
-    # 摘要请求: system prompt 含 summariz/compact 关键词, 或单条 user 含大量历史
-    all_text = json.dumps(body, ensure_ascii=False).lower()
-    if "summar" in all_text or "compact" in all_text or "condense" in all_text:
+    # 只看对话文本 (messages/system/instructions), 排除 reasoning.summary 等
+    # 参数字段误判 (codex 的 reasoning={"summary":"auto"} 不应被当成压缩摘要请求)。
+    parts = [json.dumps(msgs, ensure_ascii=False)]
+    sys = body.get("system")
+    parts.append(sys if isinstance(sys, str) else json.dumps(sys, ensure_ascii=False))
+    instr = body.get("instructions")
+    if isinstance(instr, str):
+        parts.append(instr)
+    inp = body.get("input")
+    if inp is not None:
+        parts.append(json.dumps(inp, ensure_ascii=False))
+    text = " ".join(p for p in parts if p).lower()
+    # 摘要请求: 对话内容含 summariz/compact 关键词
+    if "summar" in text or "compact" in text or "condense" in text:
         return "summary"
-    if "title" in all_text and len(msgs) <= 3:
+    if "title" in text and len(msgs) <= 3:
         return "title"
     # 主请求通常带 tools 或多轮 messages
     return "main"
@@ -120,7 +131,7 @@ class Handler(BaseHTTPRequestHandler):
         if "/v1/messages" in path:
             return self._anthropic(stream, ptoks)
         if "responses" in path:
-            return self._responses(ptoks)
+            return self._responses(stream, ptoks)
         return self._chat(stream, ptoks)
 
     def do_GET(self):
@@ -203,14 +214,56 @@ class Handler(BaseHTTPRequestHandler):
                           "cache_read_input_tokens": 0, "cache_creation_input_tokens": 0},
             })
 
-    def _responses(self, ptoks):
-        self._json(200, {
-            "id": "resp_" + uuid.uuid4().hex[:8], "object": "response", "status": "completed",
-            "model": "gpt-mock",
-            "output": [{"id": "msg_" + uuid.uuid4().hex[:8], "type": "message", "role": "assistant",
-                        "content": [{"type": "output_text", "text": "[Mock] Responses reply."}]}],
-            "usage": {"input_tokens": ptoks, "output_tokens": 12, "total_tokens": ptoks + 12},
-        })
+    def _responses(self, stream, ptoks):
+        rid = "resp_" + uuid.uuid4().hex[:8]
+        mid = "msg_" + uuid.uuid4().hex[:8]
+        text = "[Mock] Responses reply."
+        msg_item = {"id": mid, "type": "message", "role": "assistant", "status": "completed",
+                    "content": [{"type": "output_text", "text": text, "annotations": []}]}
+        usage = {"input_tokens": ptoks, "output_tokens": 12, "total_tokens": ptoks + 12}
+
+        def resp_obj(status, output):
+            return {"id": rid, "object": "response", "status": status, "model": "gpt-mock",
+                    "output": output, "usage": usage if status == "completed" else None}
+
+        if not stream:
+            return self._json(200, resp_obj("completed", [msg_item]))
+
+        # Responses API SSE 事件序列, 让 OpenAI SDK 的 responses stream 能正确解析到 terminal。
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream")
+        self.end_headers()
+        seq = [0]
+
+        def sse(ev, data):
+            data = dict(data)
+            data["sequence_number"] = seq[0]
+            seq[0] += 1
+            self.wfile.write(f"event: {ev}\ndata: {json.dumps(data)}\n\n".encode())
+            self.wfile.flush()
+
+        in_progress_item = {"id": mid, "type": "message", "role": "assistant",
+                            "status": "in_progress", "content": []}
+        sse("response.created", {"type": "response.created", "response": resp_obj("in_progress", [])})
+        sse("response.in_progress", {"type": "response.in_progress", "response": resp_obj("in_progress", [])})
+        sse("response.output_item.added",
+            {"type": "response.output_item.added", "output_index": 0, "item": in_progress_item})
+        sse("response.content_part.added",
+            {"type": "response.content_part.added", "item_id": mid, "output_index": 0,
+             "content_index": 0, "part": {"type": "output_text", "text": "", "annotations": []}})
+        sse("response.output_text.delta",
+            {"type": "response.output_text.delta", "item_id": mid, "output_index": 0,
+             "content_index": 0, "delta": text})
+        sse("response.output_text.done",
+            {"type": "response.output_text.done", "item_id": mid, "output_index": 0,
+             "content_index": 0, "text": text})
+        sse("response.content_part.done",
+            {"type": "response.content_part.done", "item_id": mid, "output_index": 0,
+             "content_index": 0, "part": {"type": "output_text", "text": text, "annotations": []}})
+        sse("response.output_item.done",
+            {"type": "response.output_item.done", "output_index": 0, "item": msg_item})
+        sse("response.completed",
+            {"type": "response.completed", "response": resp_obj("completed", [msg_item])})
 
     def _gemini(self, ptoks):
         self._json(200, {

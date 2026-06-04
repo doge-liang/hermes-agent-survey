@@ -151,6 +151,39 @@ def main():
         converse_multi(a, 1)
         a.close()
 
+    # ════════ OpenAI SDK 路径增强场景 (codex_responses + reasoning) ════════
+    # 需要 mock_backend 的 /responses 支持 Responses API SSE 事件流。
+
+    # ── H. codex_responses body 特征 (api_mode override, custom provider) ──
+    # 观察: store=False + prompt_cache_key(=session_id) + reasoning + include + instructions字段。
+    # custom provider 下 is_codex_backend=False, 故无 session_id/x-client-request-id header。
+    banner("H. api_mode=codex_responses (custom) — store/prompt_cache_key/reasoning/instructions")
+    a = build_agent(model="gpt-5", provider="custom", base_url=MOCK, api_mode="codex_responses")
+    converse_multi(a, 1)
+    a.close()
+
+    # ── I. 真正的 openai-codex provider → session_id + x-client-request-id header ──
+    # is_codex_backend = (provider=="openai-codex" or chatgpt.com/backend-api/codex);
+    # 触发后 codex transport 注入 session_id + x-client-request-id header (与 prompt_cache_key 同值)。
+    # 传入 api_key 即可绕过该 provider 的 oauth_external 流程指向 mock。
+    banner("I. provider=openai-codex — session_id/x-client-request-id header + prompt_cache_key (三者同值)")
+    a = build_agent(model="gpt-5", provider="openai-codex", base_url=MOCK)
+    converse_multi(a, 1)
+    a.close()
+
+    # ── J. chat_completions + reasoning → extra_body.reasoning ──
+    # OpenRouter profile: supports_reasoning 时把 reasoning_config 整体放入 extra_body.reasoning。
+    # mock 模型不在 hermes model_metadata 内, 强制 _supports_reasoning_extra_body 以观察注入。
+    banner("J. provider=openrouter + reasoning effort=high — extra_body.reasoning")
+    a = build_agent(model="deepseek/deepseek-r1", provider="openrouter", base_url=MOCK,
+                    reasoning_config={"effort": "high", "enabled": True})
+    try:
+        a._supports_reasoning_extra_body = lambda: True
+    except Exception as e:
+        print(f"  [force reasoning err] {e}", flush=True)
+    converse_multi(a, 1)
+    a.close()
+
     print(f"\n{'='*78}\n  全部场景完成. 日志: validation_platform/requests.jsonl\n{'='*78}", flush=True)
 
 
