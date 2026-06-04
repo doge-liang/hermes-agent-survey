@@ -28,7 +28,7 @@
 | # | 报告 | 内容 |
 |---|------|------|
 | 12 | [所有传输层 Agent-Hints 总结](12-所有传输层Agent-Hints总结.md) | 各传输/provider 注入的 header、body 字段对比表 |
-| 13 | [上下文管理特性 — 源码与实测验证](13-上下文管理特性-源码与实测验证.md) | OpenAI SDK 路径(chat_completions + codex_responses)上下文管理源码 + 真实请求实测，含版本核对 |
+| 13 | [上下文管理特性 — 源码与实测验证](13-上下文管理特性-源码与实测验证.md) | OpenAI SDK 路径(chat_completions + codex_responses)上下文管理源码 + 真实请求实测 |
 | 14 | [Anthropic 路径上下文管理深度测试](14-Anthropic路径上下文管理深度测试.md) | **最深入**：Anthropic SDK 路径(`anthropic_messages`)—— 原生 cache_control 断点/TTL/beta/thinking 五分支/usage 聚合/压缩/续写，对抗验证 + 25 断言 |
 
 **核心发现（v0.15.1）**：
@@ -36,7 +36,7 @@
 - **prompt caching / `cache_control`**：Anthropic native（content-level）/ OpenRouter wire（envelope-level），断点策略 = system + 最后 3 条非系统消息，随对话增长向后滑动。
 - **会话亲和 / session_id**：
   - 标准 OpenAI Chat Completions：**无**会话标识（仅 messages/model/stream）
-  - OpenRouter（chat_completions）：**`body.session_id`（全模型，v0.15.1 起注入）**；grok 模型额外 `x-grok-conv-id` header
+  - OpenRouter（chat_completions）：**`body.session_id`（全模型）**；grok 模型额外 `x-grok-conv-id` header
   - Codex / xAI（Responses API）：header `session_id`/`x-client-request-id` + body `prompt_cache_key`（同值）
 - **上下文压缩**：preflight + real-usage 双触发，压缩用辅助请求生成摘要，session_id 全程不变。
 - **context 探测**：Ollama `/api/show` 探测 `context_length`。

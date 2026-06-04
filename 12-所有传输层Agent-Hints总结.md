@@ -4,9 +4,7 @@
 > Mock 后端：`/tmp/mock_server_v3.py` (127.0.0.1:19998)
 > 测试脚本：`/tmp/test_all_transports.py`
 >
-> 📌 更新 (2026-06-04)：本表原以 client 重放方式生成 (反映 v0.15.1 源码行为)。用户真实安装现已升级到 v0.15.1，
-> 经真实安装 venv 端到端复核后补充：**OpenRouter chat_completions 路径会在 body 顶层注入 `session_id`(全模型)** —
-> 这是原表遗漏的会话亲和字段，详见 §2.2。(升级前 v0.13.0 不注入此字段。)
+> 📌 经真实安装 venv 端到端复核：**OpenRouter chat_completions 路径会在 body 顶层注入 `session_id`(全模型)**，是会话亲和字段，详见 §2.2。
 
 ---
 
