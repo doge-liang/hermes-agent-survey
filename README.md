@@ -32,6 +32,7 @@
 | 14 | [Anthropic 路径上下文管理深度测试](14-Anthropic路径上下文管理深度测试.md) | **最深入**：Anthropic SDK 路径(`anthropic_messages`)—— 原生 cache_control 断点/TTL/beta/thinking 五分支/usage 聚合/压缩/续写，对抗验证 + 25 断言 |
 | 15 | [真实 CLI 探测测试台](15-真实CLI探测测试台.md) | **真实 `hermes` CLI** + mock 探测：走完整 config + 全量 system(16k 字符)+ 29 tools 入口，补 import-driver 盲区；12 场景 25 断言；产出真实后端测试台 fixtures |
 | 16 | [Dynamo 风格 KV/调度 — 信息采集与测试台设计](16-Dynamo风格KV调度-信息采集与测试台设计.md) | **前瞻设计**：受 NVIDIA Dynamo Agent Hint 启发，将 Hermes 已实测 agent hints 映射到 KVCache 主动管理(G1)/Agent 状态感知调度(G2)/SLO 感知调度(G3)——8 大信号组采集规格 + 5 层测试台架构(MOCK 验决策 / REAL 验时延)+ 实验矩阵；经对抗评审回源码修正(§7 留痕) |
+| 17 | [自研 KV/调度的 Hermes 信号提取规格](17-自研KV调度的Hermes信号提取规格.md) | **实现输入规格**：自研全栈(后端与 NVIDIA 不兼容、NeMo+Dynamo 从零重做)前提下，**29 个信号的逐条提取配方**（确切 file:line + W/S/H 提取机制 + 保真度/成本/接缝，两轮回 v0.15.1 源码核验）+ 对报告12–16 的坐标勘误 + 自有全栈相对 NVIDIA 的解锁清单 + host 门控重评估 + 采集层落地路线 |
 
 **核心发现（v0.15.1）**：
 

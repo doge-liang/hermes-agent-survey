@@ -11,7 +11,7 @@
 | 维度 | import-driver(报告 12-14) | 真实 CLI(本报告) |
 |------|---------------------------|--------------------|
 | 入口 | `AIAgent.run_conversation()` 直接构造 | `hermes chat` 子命令,走 CLI + config 解析 |
-| tools | `enabled_toolsets=[]` → **0 tools** | 即便 `toolsets:[]` → **29 tools**(browser_*/execute_code/terminal/web_search/todo/...) |
+| tools | `enabled_toolsets=[]` → **0 tools** | config `toolsets:[]` → **29 tools**(browser_*/execute_code/terminal/web_search/todo/...;核心工具恒含,config 空集 ≠ 内部 `enabled_toolsets=[]`,详报告17 §2.1) |
 | system prompt | ~1700 字符(缩水) | **16096 字符**(含 AGENTS/rules/工具说明,不加 `--ignore-user-config`) |
 | 触发方式 | monkeypatch(`_supports_reasoning_extra_body`/`threshold_tokens`) | **纯 config + 真实模型名**(`agent.reasoning_effort` 等),无 monkeypatch |
 | 配置映射 | 手设 agent 内部状态 | 经 `config.yaml` → agent 状态(覆盖真实映射链路) |
@@ -49,7 +49,7 @@
 
 ## 4. 关键发现
 
-- **CLI 入口的请求远比 import-driver 丰富**:29 tools + 16096 字符 system,即便 `toolsets:[]`。推理框架在真实部署下看到的是这个量级的 prefix,不是 import-driver 的缩水版 —— 这直接影响 KV cache 前缀命中与亲和性。
+- **CLI 入口的请求远比 import-driver 丰富**:29 tools + 16096 字符 system(config `toolsets:[]` 下——核心工具恒含,config 空集 ≠ 内部 `enabled_toolsets=[]`(后者得 0);此处 29/16096 是该配置下的**环境相关捕获值**,数量与长度一律从 wire 读,详报告17 §2.1)。推理框架在真实部署下看到的是这个量级的 prefix,不是 import-driver 的缩水版 —— 这直接影响 KV cache 前缀命中与亲和性。
 - **压缩阈值有 64000 token 硬地板**(`threshold_tokens=max(ctx*0.5, MINIMUM_CONTEXT_LENGTH=64000)`),且 `context_length` 配置会被**模型真实窗口元数据覆盖**(claude-sonnet-4 → 200000 → 阈值 100000)。CLI 无法像 import-driver 那样 override 阈值,只能让消息内容真累积过阈值才触发。
 - **host 门控是真实约束**:OpenRouter profile 的 `body.session_id`/`x-grok-conv-id`/envelope 布局/reasoning extra_body 都要求 base_url host 命中 `openrouter.ai`;`provider=openrouter`(内置)不采用 custom_providers 同名条目的 base_url override,localhost 一律打不通 → 这些 hint **只能在接真实 openrouter 后端时验证**(正是 fixtures 的用途)。
 - **`--pass-session-id` 只注入 system prompt 文本**,不进任何 header/body 业务字段(`system_prompt.py:332`)。

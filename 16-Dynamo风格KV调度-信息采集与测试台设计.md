@@ -49,10 +49,12 @@
 | 信号 | Hermes 来源/字段 | 采集方式 | 稳定性 | 决策 | G |
 |---|---|---|---|---|---|
 | System prompt(真实 CLI ~16096 字节) | `chat`:messages[0].role=system;`anthropic`:body.system;`codex`:body.**instructions**(`system_prompt.py`) | HTTP可见 | 恒定(整天;跨日或 `invalidate_system_prompt` 才变) | KvIndexer prefix tree 顶层 → pin 候选 | G1 |
-| Tools 定义(29 个 schema) | `chat`/`anthropic`/`codex`:body.tools(`toolsets:[]` 仍 29) | HTTP可见 | 恒定(版本内) | 与 system 拼成可 pin 前缀第二段 | G1 |
+| Tools 定义(默认 ~29,**环境相关**) | `chat`/`anthropic`/`codex`:body.tools(config `toolsets:[]` 仍含核心工具;**数从 wire 读不硬编码**,详报告17 §2.1) | HTTP可见 | 恒定(版本内) | 与 system 拼成可 pin 前缀第二段 | G1 |
 | Bit-perfect 前缀规范化 | `conversation_loop.py:1047-1078`:`content.strip()`+`json.dumps(sort_keys=True,separators=(",",":"))`+surrogate 清理 | HTTP可见(结果体现在 body) | 恒定 | 逐字节稳定前缀 → 块哈希链稳定、命中率最大化 | G1 |
 | System 断点字节恒定(实测 len=2126/16110 跨轮一致) | `anthropic` system block | HTTP可见 | 恒定 | 对 system 段长 TTL pin,无失效风险 | G1 |
 | 隐式前缀句柄 = system+tools prefix-hash | 由 body 前缀派生 | 框架自算(tokenize+hash) | 恒定 | 无显式会话键时的被动会话键 | G1 |
+
+> ⚠️ **环境相关(报告17 §2.1 勘误)**:本组 system(~16096 字节)与 tools(~29)是 **config `toolsets:[]` 下的真实 CLI 捕获值**,非固定常量——config 空集 ≠ 内部 `enabled_toolsets=[]`(后者得 0 工具),核心工具恒含。下文出现的「16096 字符 system / 29 tools」均为此捕获量级;**采集时一律从 wire 读实际长度/数量,不硬编码。**
 
 #### ② 会话亲和(routing key)
 
@@ -61,7 +63,7 @@
 | body.session_id | body 顶层;`chat`;**仅 provider=openrouter** | HTTP可见 | 恒定(压缩后轮换) | KV-aware sticky routing key | G2 |
 | header.session_id | header;`codex`;仅 is_codex_backend(`codex.py:234`) | HTTP可见 | 恒定 | header 级会话粘性 | G2 |
 | header.x-client-request-id(=session_id) | `codex.py:235` | HTTP可见 | 恒定 | 冗余路由键 | G2 |
-| body.prompt_cache_key(=session_id) | xAI 经 extra_body,`codex.py:264`;`codex` | HTTP可见 | 恒定 | 直接 KV cache 桶路由键 | G2 |
+| body.prompt_cache_key(=session_id) | codex `codex.py:159`;xAI 另经 extra_body `codex.py:264`;`codex` | HTTP可见 | 恒定 | 直接 KV cache 桶路由键 | G2 |
 | header.x-grok-conv-id | openrouter+`x-ai/grok-*` 或 codex+xai(`codex.py:253`) | HTTP可见 | 恒定 | xAI 流量会话亲和 | G2 |
 | body.metadata.sessionId | `chat`;qwen 且 host==portal.qwen.ai | HTTP可见(localhost 不触发) | 恒定 | Qwen 流量会话亲和 | G2 |
 | gateway `session_key`+`config_signature` | 内部 LRU(`gateway/run.py:17648-17716`) | 需 hook | 恒定(signature 变即解亲和) | sticky routing;signature 变 → 允许重均衡 | G2/G1 |
@@ -104,7 +106,7 @@
 | 触发抖动门控 `tolerated_growth=max(4096, threshold*0.05)` + 反抖动(近 2 次省<10% 跳过) | `context_compressor.py:721` 等 | 需 hook | — | 压缩不高频连发 → 失效偶发,亲和决策可放心;**也意味着 filler 必须真跨阈值+跨 growth tolerance 才触发**(评审 M1) | G3 |
 | `current_tokens/(ctx×0.5)`(前缀剩余寿命) | `approx_request_tokens`(`conversation_loop.py:1089`) | 框架自算 | 单调逼近 1 | 接近 1→避免激进 KV 预约;远离→强亲和 | G2/G1 |
 | Preflight/Real-time 两阶段 + `awaiting_real_usage` | `conversation_loop.py:639`(preflight)/`:3965`(real usage) | 需 hook;输入 usage HTTP可见 | 事件性 | 依赖框架流尾准确返回 prompt_tokens,否则空转延迟压缩 | G3 |
-| Summary 辅助请求(独特签名) | 独立调用:非流式 + 单 user + 无 system + 无 tools + max_tokens=2000;内容以 `"You are a summarization agent…"` 开头 | HTTP可见(签名独特) | 事件性 | 识别为辅助请求。**⚠️ 评审 M2:它走同一 base_url/同 session client,真机若按 session_id 粘性路由会落同一 DP rank/占同一前缀树——「不占主会话 KV」是待验证假设,非既定事实**;native anthropic 还会逃逸真实 api | G1/G3 |
+| Summary 辅助请求(独特签名) | 独立调用:非流式 + 单 user + 无 system + 无 tools + `max_tokens=int(summary_budget×1.3)`(floor `_MIN_SUMMARY_TOKENS`=2000,详报告17 §2.1);内容以 `"You are a summarization agent…"` 开头 | HTTP可见(签名独特) | 事件性 | 识别为辅助请求。**⚠️ 评审 M2:它走同一 base_url/同 session client,真机若按 session_id 粘性路由会落同一 DP rank/占同一前缀树——「不占主会话 KV」是待验证假设,非既定事实**;native anthropic 还会逃逸真实 api | G1/G3 |
 | 压缩后前缀重写(中段失效点) | `[system]+[头部 protect_first_n=3 条]+[assistant:摘要 `[CONTEXT COMPACTION — REFERENCE ONLY]`]+[尾部按 token 预算 `tail_token_budget≈threshold×0.20` **动态**保留若干条,非固定 20 条(评审 H3)]`;messages 长度突降+非单调 | HTTP可见(SUMMARY_PREFIX 标记) | 事件后前缀改变 | KV 大规模失效点:中段历史被摘要替换 → 旧 KV 作废,只 system+头尾有效;**回放器须按 token 预算重建有效尾部** | G1/G3 |
 | 会话轮换 session_id + parent_session_id | `conversation_compression.py:507-538` | 新 session_id:HTTP可见;**parent_session_id:需 hook** | 轮换点 | 路由键变更点:新 key 经 parent 链映射回旧节点保 KV 局部性 | G1/G2 |
 

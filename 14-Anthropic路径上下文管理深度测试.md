@@ -193,7 +193,7 @@ SDK `get_final_message()` 返回原生 Anthropic Message,`.usage` 即 SDK 流式
 | **28** | **summary** | **False** | **1** | **False** | `/v1/v1/messages` |
 | 29 | main | True | 5 | False | `/anthropic/v1/messages` |
 
-摘要请求 body(seq 26):`keys=[max_tokens, messages, model]`,`stream=None`,`tools=None`,单 user 消息,content 以 `"You are a summarization agent creating a context checkpoint..."` 开头,`max_tokens=2000`。主请求 `n_messages` 在压缩后回落不再单调增(`[1,3,5,5,5]`,封顶 5,PASS)。
+摘要请求 body(seq 26):`keys=[max_tokens, messages, model]`,`stream=None`,`tools=None`,单 user 消息,content 以 `"You are a summarization agent creating a context checkpoint..."` 开头,`max_tokens=2000`(注:v0.15.1 源码为 `max_tokens=int(summary_budget×1.3)`,`summary_budget=max(_MIN_SUMMARY_TOKENS=2000, content×0.20, …)`,floor 情形≈2600;此处实测 2000 应为升级前 v0.13 捕获,详报告17 §2.1)。主请求 `n_messages` 在压缩后回落不再单调增(`[1,3,5,5,5]`,封顶 5,PASS)。
 
 > 注:此处刻意用 **custom provider** 而非 native。native anthropic 压缩摘要的辅助 client 会逃逸到真实 `api.anthropic.com`(见 §4c),用 custom 才能把摘要留在 localhost mock。摘要 path 显示 `/v1/v1/messages` 是 mock 对 custom base_url 的 SDK 拼接产物,不影响形态断言。
 
