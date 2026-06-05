@@ -9,6 +9,8 @@
 
 ## 0. TL;DR
 
+本报告做两件事:一是盘点 Hermes-Agent 在每次推理请求里**已经下发**(或框架可推导)的、能喂给 Dynamo 风格 KV/调度系统的元数据(即 agent hint——agent 随推理请求下发给后端、辅助 KV/调度决策的元数据),并标注每条信号的采集方式与缺口;二是给出一套分两段真值域(MOCK / REAL)的测试台设计,用来验证「这些信号能否驱动出更优的调度决策」。核心结论如下:
+
 1. **能零改 Hermes 拿到的信息已经足够启动 G1/G2**:稳定共享前缀(16096-char system + 29 tools)、bit-perfect 前缀规范化、会话亲和键(`session_id`/`prompt_cache_key`/`x-grok-conv-id`,但**强 host/provider 门控**)、cache_control 断点(`system_and_3`,详 §2.1③)、压缩后前缀重写(SUMMARY_PREFIX = KV 中段失效点)、reasoning/thinking decode 先验(`budget_tokens=16000` 等)全是 HTTP 可见。
 2. **G3 的核心是「有 hint vs 无 hint」两条基线对照**,而 Hermes 里这条线基本由 **provider/profile** 切换:custom/官方 OpenAI/localhost 几乎无会话键、无 cache_control、无 reasoning 先验;OpenRouter/Codex/xAI profile 才解锁全套 hint。
 3. **Hermes v0.15.1 当前不下发** 8 类关键信号(全仓 grep `predicted/decode_length/expected_output` 零命中):显式 decode 长度预测、执行图/steps-to-execution、parent_session_id、压缩阈值/预警、重试计数、turn 阶段、custom 路径会话键、缓存命中回填消费通道——这些需新增 `x-hermes-*` 旁路 header 或 `build_extra_body` 注入。
@@ -137,7 +139,7 @@
 |---|---|---|---|---|---|
 | body.stream(默认 true) | body 顶层;全 mode | HTTP可见 | 恒定 | 流式需持 KV 直到流尾 | G3 |
 | stream_options.include_usage | `chat`(`chat_completion_helpers.py:1707`) | HTTP可见 | 恒定 | **关键**:压缩依赖流尾 prompt_tokens,否则空转 | G3 |
-| usage 三桶(input/cache_read/cache_creation) | 响应下行解析 | HTTP可见(下行) | 事件性 | Hermes 读后端命中数(代理 KV 占用);**framework 回填命中率无消费通道 = G3 闭环硬前置(评审 F3)** | G3 |
+| usage 三桶(input/cache_read/cache_creation) | 响应下行解析 | HTTP可见(下行) | 事件性 | Hermes 读后端命中数(代理 KV 占用);**框架回填命中率无消费通道 = G3 闭环硬前置(评审 F3)** | G3 |
 | long-context tier 429 反应式恢复 | 响应 429→降 ctx+压缩+retry | HTTP可见(429 后 messages 变化);**重试计数需 hook** | 事件性 | 重试=新请求,前缀被压缩重写 | G3 |
 | thinking 签名 400 清空重试 | `conversation_loop.py:2544-2562`,`error_classifier.py:553` | HTTP可见(重试 body 差异);分支判定需 hook | 事件性 | 重试请求前缀略变(thinking 块剥离) | G3 |
 | 重试计数/退避状态 | 内部 | **需 hook** | — | 识别「第 k 次重试」避免重复抢占 | G3 |
